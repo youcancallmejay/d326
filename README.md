@@ -1,1 +1,157 @@
-# d326
+# d326B.
+CREATE OR REPLACE FUNCTION get_high_revenue_flag(amount NUMERIC)
+RETURNS VARCHAR AS $$
+BEGIN
+    IF amount > 5 THEN
+        RETURN 'Yes';
+    ELSE
+        RETURN 'No';
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+C.
+CREATE TABLE rental_revenue_details (
+    rental_id INTEGER PRIMARY KEY,
+    store_id INTEGER NOT NULL,
+    category_name VARCHAR(50) NOT NULL,
+    film_title VARCHAR(255) NOT NULL,
+    rental_date TIMESTAMP NOT NULL,
+    payment_amount NUMERIC(5,2) NOT NULL,
+    is_high_revenue VARCHAR(10) NOT NULL
+);
+
+CREATE TABLE store_category_revenue_summary (
+    store_id INTEGER,
+    category_name VARCHAR(50),
+    total_revenue NUMERIC(10,2) NOT NULL,
+    rental_count INTEGER NOT NULL,
+    avg_payment_per_rental NUMERIC(5,2) NOT NULL,
+    category_rank INTEGER NOT NULL,
+    PRIMARY KEY (store_id, category_name)
+);
+D.
+SELECT
+    r.rental_id,
+    s.store_id,
+    c.name AS category_name,
+    f.title AS film_title,
+    r.rental_date,
+    p.amount AS payment_amount,
+    get_high_revenue_flag(p.amount) AS is_high_revenue
+FROM
+    payment p
+JOIN rental r ON p.rental_id = r.rental_id
+JOIN inventory i ON r.inventory_id = i.inventory_id
+JOIN film f ON i.film_id = f.film_id
+JOIN film_category fc ON f.film_id = fc.film_id
+JOIN category c ON fc.category_id = c.category_id
+JOIN staff st ON r.staff_id = st.staff_id
+JOIN store s ON st.store_id = s.store_id
+ORDER BY
+    p.amount DESC;
+
+E.
+-- First, create the trigger function
+CREATE OR REPLACE FUNCTION update_store_category_summary()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- If the store/category combo already exists, update the record
+    UPDATE store_category_revenue_summary
+    SET 
+        total_revenue = total_revenue + NEW.payment_amount,
+        rental_count = rental_count + 1,
+        avg_payment_per_rental = (total_revenue + NEW.payment_amount) / (rental_count + 1)
+    WHERE store_id = NEW.store_id AND category_name = NEW.category_name;
+
+    -- If no existing record, insert a new one
+    IF NOT FOUND THEN
+        INSERT INTO store_category_revenue_summary (
+            store_id,
+            category_name,
+            total_revenue,
+            rental_count,
+            avg_payment_per_rental,
+            category_rank
+        )
+        VALUES (
+            NEW.store_id,
+            NEW.category_name,
+            NEW.payment_amount,
+            1,
+            NEW.payment_amount,
+            NULL  -- We'll update ranking separately
+        );
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+-- The trigger
+CREATE TRIGGER trg_update_store_category_summary
+AFTER INSERT ON rental_revenue_details
+FOR EACH ROW
+EXECUTE FUNCTION update_store_category_summary();
+
+
+
+
+F.
+CREATE OR REPLACE PROCEDURE refresh_revenue_report()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Step 1: Clear existing data
+    TRUNCATE TABLE rental_revenue_details;
+    TRUNCATE TABLE store_category_revenue_summary;
+
+    -- Step 2: Re-insert data into rental_revenue_details (from Part D)
+    INSERT INTO rental_revenue_details (
+        rental_id,
+        store_id,
+        category_name,
+        film_title,
+        rental_date,
+        payment_amount,
+        is_high_revenue
+    )
+    SELECT
+        p.payment_id,
+        s.store_id,
+        c.name AS category_name,
+        f.title AS film_title,
+        r.rental_date,
+        p.amount AS payment_amount,
+        CASE 
+            WHEN p.amount > 5 THEN 'Yes'
+            ELSE 'No'
+        END AS is_high_revenue
+    FROM payment p
+    JOIN rental r ON p.rental_id = r.rental_id
+    JOIN inventory i ON r.inventory_id = i.inventory_id
+    JOIN film f ON i.film_id = f.film_id
+    JOIN film_category fc ON f.film_id = fc.film_id
+    JOIN category c ON fc.category_id = c.category_id
+    JOIN staff s ON r.staff_id = s.staff_id;
+
+    -- Step 3: Re-populate summary table
+    INSERT INTO store_category_revenue_summary (
+        store_id,
+        category_name,
+        total_revenue,
+        rental_count,
+        avg_payment_per_rental,
+        category_rank
+    )
+    SELECT
+        store_id,
+        category_name,
+        SUM(payment_amount) AS total_revenue,
+        COUNT(*) AS rental_count,
+        ROUND(AVG(payment_amount), 2) AS avg_payment_per_rental,
+        NULL -- rank can be updated separately
+    FROM rental_revenue_details
+    GROUP BY store_id, category_name;
+END;
+$$;
