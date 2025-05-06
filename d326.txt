@@ -70,7 +70,7 @@ BEGIN
             category_name,
             total_revenue,
             rental_count,
-            avg_payment_per_rental,
+            avg_payment_per_rental
         )
         VALUES (
             NEW.store_id,
