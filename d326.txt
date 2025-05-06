@@ -145,7 +145,7 @@ BEGIN
         category_name,
         SUM(payment_amount) AS total_revenue,
         COUNT(*) AS rental_count,
-        ROUND(AVG(payment_amount), 2) AS avg_payment_per_rental,
+        ROUND(AVG(payment_amount), 2) AS avg_payment_per_rental
     FROM rental_revenue_details
     GROUP BY store_id, category_name;
 END;
