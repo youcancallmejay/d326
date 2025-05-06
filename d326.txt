@@ -29,26 +29,7 @@ CREATE TABLE store_category_revenue_summary (
     avg_payment_per_rental NUMERIC(5,2) NOT NULL,
     PRIMARY KEY (store_id, category_name)
 );
-D.
-SELECT
-    r.rental_id,
-    s.store_id,
-    c.name AS category_name,
-    f.title AS film_title,
-    r.rental_date,
-    p.amount AS payment_amount,
-    get_high_revenue_flag(p.amount) AS is_high_revenue
-FROM
-    payment p
-JOIN rental r ON p.rental_id = r.rental_id
-JOIN inventory i ON r.inventory_id = i.inventory_id
-JOIN film f ON i.film_id = f.film_id
-JOIN film_category fc ON f.film_id = fc.film_id
-JOIN category c ON fc.category_id = c.category_id
-JOIN staff st ON r.staff_id = st.staff_id
-JOIN store s ON st.store_id = s.store_id
-ORDER BY
-    p.amount DESC;
+
 
 E.
 -- First, create the trigger function
@@ -99,11 +80,9 @@ CREATE OR REPLACE PROCEDURE refresh_revenue_report()
 LANGUAGE plpgsql
 AS $$
 BEGIN
-    -- Step 1: Clear existing data
     TRUNCATE TABLE rental_revenue_details;
     TRUNCATE TABLE store_category_revenue_summary;
 
-    -- Step 2: Re-insert data into rental_revenue_details (from Part D)
     INSERT INTO rental_revenue_details (
         rental_id,
         store_id,
@@ -114,39 +93,20 @@ BEGIN
         is_high_revenue
     )
     SELECT
-        p.payment_id,
-        s.store_id,
+        r.rental_id,
+        i.store_id,
         c.name AS category_name,
         f.title AS film_title,
         r.rental_date,
-        p.amount AS payment_amount,
-        CASE 
-            WHEN p.amount > 5 THEN 'Yes'
-            ELSE 'No'
-        END AS is_high_revenue
+        SUM(p.amount) AS payment_amount,
+        get_high_revenue_flag(SUM(p.amount)) AS is_high_revenue  -- Fix: Use SUM(p.amount)
     FROM payment p
     JOIN rental r ON p.rental_id = r.rental_id
     JOIN inventory i ON r.inventory_id = i.inventory_id
     JOIN film f ON i.film_id = f.film_id
     JOIN film_category fc ON f.film_id = fc.film_id
     JOIN category c ON fc.category_id = c.category_id
-    JOIN staff s ON r.staff_id = s.staff_id;
-
-    -- Step 3: Re-populate summary table
-    INSERT INTO store_category_revenue_summary (
-        store_id,
-        category_name,
-        total_revenue,
-        rental_count,
-        avg_payment_per_rental
-)
-    SELECT
-        store_id,
-        category_name,
-        SUM(payment_amount) AS total_revenue,
-        COUNT(*) AS rental_count,
-        ROUND(AVG(payment_amount), 2) AS avg_payment_per_rental
-    FROM rental_revenue_details
-    GROUP BY store_id, category_name;
+    GROUP BY r.rental_id, i.store_id, c.name, f.title, r.rental_date
+    ORDER BY SUM(p.amount) DESC;
 END;
 $$;
