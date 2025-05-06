@@ -138,9 +138,8 @@ BEGIN
         category_name,
         total_revenue,
         rental_count,
-        avg_payment_per_rental,
-        category_rank
-    )
+        avg_payment_per_rental
+)
     SELECT
         store_id,
         category_name,
