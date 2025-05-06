@@ -77,7 +77,7 @@ BEGIN
             NEW.category_name,
             NEW.payment_amount,
             1,
-            NEW.payment_amount,
+            NEW.payment_amount
         );
     END IF;
 
