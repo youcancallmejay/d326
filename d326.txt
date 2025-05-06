@@ -110,3 +110,8 @@ BEGIN
     ORDER BY SUM(p.amount) DESC;
 END;
 $$;
+
+
+CALL refresh_revenue_report();
+
+SELECT * FORM rental_revenue_details;
