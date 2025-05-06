@@ -27,7 +27,6 @@ CREATE TABLE store_category_revenue_summary (
     total_revenue NUMERIC(10,2) NOT NULL,
     rental_count INTEGER NOT NULL,
     avg_payment_per_rental NUMERIC(5,2) NOT NULL,
-    category_rank INTEGER NOT NULL,
     PRIMARY KEY (store_id, category_name)
 );
 D.
@@ -72,7 +71,6 @@ BEGIN
             total_revenue,
             rental_count,
             avg_payment_per_rental,
-            category_rank
         )
         VALUES (
             NEW.store_id,
@@ -80,7 +78,6 @@ BEGIN
             NEW.payment_amount,
             1,
             NEW.payment_amount,
-            NULL  -- We'll update ranking separately
         );
     END IF;
 
@@ -150,7 +147,6 @@ BEGIN
         SUM(payment_amount) AS total_revenue,
         COUNT(*) AS rental_count,
         ROUND(AVG(payment_amount), 2) AS avg_payment_per_rental,
-        NULL -- rank can be updated separately
     FROM rental_revenue_details
     GROUP BY store_id, category_name;
 END;
